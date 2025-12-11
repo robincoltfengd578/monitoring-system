@@ -1,33 +1,57 @@
 // ============================================
-// AIRTABLE CONFIGURATION
+// NETLIFY API CONFIGURATION
 // ============================================
-const AIRTABLE_CONFIG = {
-    // Your API Key (from https://airtable.com/account)
-    API_KEY: 'patvWcPyRvzdtlnKj.ce09055fcc41ba044607885068d480aa960790656aeaccf55bee9a4a2a523f47',
+const NETLIFY_CONFIG = {
+    // Netlify function endpoint
+    API_ENDPOINT: '/api/airtable',
     
-    // Your Base ID (from Airtable URL)
-    BASE_ID: 'appGZDElUfQHByZrz',
-    
-    // Your Table IDs (from your tables)
+    // Tables mapping
     TABLES: {
-        ATTENDANCE: 'tblwFxtY9Zw8SgAXK',    // Attendance Monitoring
-        LOCATIONS: 'tblPkl7I9IyTjMzDj',     // Location table
-        EMPLOYEES: 'tblZNAV93JJPxB55K'       // Master List
+        ATTENDANCE: 'attendance',
+        LOCATIONS: 'locations',
+        EMPLOYEES: 'employees'
     }
-};
-
-// API URLs
-const API_URLS = {
-    ATTENDANCE: `https://api.airtable.com/v0/${AIRTABLE_CONFIG.BASE_ID}/${AIRTABLE_CONFIG.TABLES.ATTENDANCE}`,
-    LOCATIONS: `https://api.airtable.com/v0/${AIRTABLE_CONFIG.BASE_ID}/${AIRTABLE_CONFIG.TABLES.LOCATIONS}`,
-    EMPLOYEES: `https://api.airtable.com/v0/${AIRTABLE_CONFIG.BASE_ID}/${AIRTABLE_CONFIG.TABLES.EMPLOYEES}`
 };
 
 // Common headers for API requests
 const API_HEADERS = {
-    'Authorization': `Bearer ${AIRTABLE_CONFIG.API_KEY}`,
     'Content-Type': 'application/json'
 };
+
+// Helper function to call Netlify function
+async function callNetlifyFunction(table, action = 'list', data = {}, recordId = null, filter = null) {
+    try {
+        let url = `${NETLIFY_CONFIG.API_ENDPOINT}?table=${table}&action=${action}`;
+        
+        if (recordId) {
+            url += `&recordId=${recordId}`;
+        }
+        
+        if (filter) {
+            url += `&filter=${encodeURIComponent(filter)}`;
+        }
+        
+        const options = {
+            method: action === 'list' ? 'GET' : action === 'create' ? 'POST' : 'PATCH',
+            headers: API_HEADERS
+        };
+        
+        if (action !== 'list') {
+            options.body = JSON.stringify(data);
+        }
+        
+        const response = await fetch(url, options);
+        
+        if (!response.ok) {
+            throw new Error(`API call failed: ${response.status}`);
+        }
+        
+        return await response.json();
+    } catch (error) {
+        console.error('Netlify function error:', error);
+        throw error;
+    }
+}
 
 // ============================================
 // GLOBAL VARIABLES
@@ -133,27 +157,27 @@ function showLoading() {
 // ============================================
 async function loadEmployees() {
     try {
-        const response = await fetch(`${API_URLS.EMPLOYEES}?view=Grid%20view`, {
-            headers: API_HEADERS
-        });
+        const data = await callNetlifyFunction(
+            NETLIFY_CONFIG.TABLES.EMPLOYEES,
+            'list',
+            { view: 'Grid view' }
+        );
         
-        if (response.ok) {
-            const data = await response.json();
-            allEmployees = data.records.map(record => ({
-                id: record.id,
-                name: record.fields['Employee Name'] || '',
-                position: record.fields['Position'] || '',
-                status: record.fields['Status'] || 'Active',
-                location: record.fields['Location'] || '',
-                supervisor: record.fields['Supervisor'] || ''
-            }));
-            
-            // Populate employee dropdown
-            populateEmployeeDropdown();
-            
-            // Update total staff count
-            document.getElementById('totalStaff').textContent = allEmployees.length;
-        }
+        allEmployees = data.records.map(record => ({
+            id: record.id,
+            name: record.fields['Employee Name'] || '',
+            position: record.fields['Position'] || '',
+            status: record.fields['Status'] || 'Active',
+            location: record.fields['Location'] || '',
+            supervisor: record.fields['Supervisor'] || ''
+        }));
+        
+        // Populate employee dropdown
+        populateEmployeeDropdown();
+        
+        // Update total staff count
+        document.getElementById('totalStaff').textContent = allEmployees.length;
+        
     } catch (error) {
         console.error('Error loading employees:', error);
     }
@@ -188,29 +212,28 @@ function populateEmployeeDropdown() {
 // ============================================
 async function loadLocations() {
     try {
-        const response = await fetch(`${API_URLS.LOCATIONS}`, {
-            headers: API_HEADERS
-        });
+        const data = await callNetlifyFunction(
+            NETLIFY_CONFIG.TABLES.LOCATIONS,
+            'list'
+        );
         
-        if (response.ok) {
-            const data = await response.json();
-            allLocations = data.records.map(record => ({
-                id: record.id,
-                code: record.fields['Code'] || '',
-                name: record.fields['Location'] || '',
-                supervisor: record.fields['Supervisor'] || ''
-            }));
-            
-            // Populate location dropdowns
-            populateLocationDropdown('location');
-            populateLocationDropdown('updateLocation');
-            
-            // Display locations list
-            displayLocationsList();
-            
-            // Update active locations count
-            document.getElementById('activeLocations').textContent = allLocations.length;
-        }
+        allLocations = data.records.map(record => ({
+            id: record.id,
+            code: record.fields['Code'] || '',
+            name: record.fields['Location'] || '',
+            supervisor: record.fields['Supervisor'] || ''
+        }));
+        
+        // Populate location dropdowns
+        populateLocationDropdown('location');
+        populateLocationDropdown('updateLocation');
+        
+        // Display locations list
+        displayLocationsList();
+        
+        // Update active locations count
+        document.getElementById('activeLocations').textContent = allLocations.length;
+        
     } catch (error) {
         console.error('Error loading locations:', error);
     }
@@ -283,36 +306,32 @@ function setupForm() {
         };
         
         try {
-            // Submit to Airtable
-            const response = await fetch(API_URLS.ATTENDANCE, {
-                method: 'POST',
-                headers: API_HEADERS,
-                body: JSON.stringify({ fields: formData })
-            });
+            // Submit via Netlify function
+            const response = await callNetlifyFunction(
+                NETLIFY_CONFIG.TABLES.ATTENDANCE,
+                'create',
+                { fields: formData }
+            );
             
-            if (response.ok) {
-                // Show success message
-                document.getElementById('successMessage').classList.remove('d-none');
-                
-                // Reset form
-                form.reset();
-                document.getElementById('date').value = currentDate;
-                document.getElementById('position').value = '';
-                
-                // Reload today's entries
-                await loadAllData();
-                
-                // Hide success message after 3 seconds
-                setTimeout(() => {
-                    document.getElementById('successMessage').classList.add('d-none');
-                }, 3000);
-            } else {
-                const errorData = await response.json();
-                showError(`Submission failed: ${errorData.error?.message || 'Unknown error'}`);
-            }
+            // Show success message
+            document.getElementById('successMessage').classList.remove('d-none');
+            
+            // Reset form
+            form.reset();
+            document.getElementById('date').value = currentDate;
+            document.getElementById('position').value = '';
+            
+            // Reload today's entries
+            await loadAllData();
+            
+            // Hide success message after 3 seconds
+            setTimeout(() => {
+                document.getElementById('successMessage').classList.add('d-none');
+            }, 3000);
+            
         } catch (error) {
             console.error('Submission error:', error);
-            showError('Network error. Please check your connection.');
+            showError('Failed to submit. Please try again.');
         } finally {
             // Re-enable submit button
             submitBtn.disabled = false;
@@ -357,17 +376,18 @@ function showError(message) {
 async function loadTodayEntries() {
     try {
         const today = new Date().toISOString().split('T')[0];
-        const filterFormula = encodeURIComponent(`DATESTR({Date}) = '${today}'`);
-        const url = `${API_URLS.ATTENDANCE}?filterByFormula=${filterFormula}&sort[0][field]=Timestamp&sort[0][direction]=desc`;
+        const filterFormula = `DATESTR({Date}) = '${today}'`;
         
-        const response = await fetch(url, {
-            headers: API_HEADERS
-        });
+        const data = await callNetlifyFunction(
+            NETLIFY_CONFIG.TABLES.ATTENDANCE,
+            'list',
+            {},
+            null,
+            filterFormula
+        );
         
-        if (response.ok) {
-            const data = await response.json();
-            displayTodayEntries(data.records);
-        }
+        displayTodayEntries(data.records);
+        
     } catch (error) {
         console.error('Error loading today entries:', error);
         document.getElementById('todayEntries').innerHTML = `
@@ -456,33 +476,30 @@ async function updateAttendanceRecord() {
     };
     
     try {
-        const response = await fetch(`${API_URLS.ATTENDANCE}/${recordId}`, {
-            method: 'PATCH',
-            headers: API_HEADERS,
-            body: JSON.stringify(updateData)
-        });
+        await callNetlifyFunction(
+            NETLIFY_CONFIG.TABLES.ATTENDANCE,
+            'update',
+            { fields: updateData },
+            recordId
+        );
         
-        if (response.ok) {
-            // Show success message
-            document.getElementById('updateSuccessMessage').classList.remove('d-none');
+        // Show success message
+        document.getElementById('updateSuccessMessage').classList.remove('d-none');
+        
+        // Reload today's entries
+        setTimeout(async () => {
+            await loadAllData();
             
-            // Reload today's entries
-            setTimeout(async () => {
-                await loadAllData();
-                
-                // Hide modal after 1.5 seconds
-                setTimeout(() => {
-                    bootstrap.Modal.getInstance(document.getElementById('updateModal')).hide();
-                    document.getElementById('updateSuccessMessage').classList.add('d-none');
-                }, 1500);
-            }, 1000);
-        } else {
-            const errorData = await response.json();
-            alert(`Update failed: ${errorData.error?.message || 'Unknown error'}`);
-        }
+            // Hide modal after 1.5 seconds
+            setTimeout(() => {
+                bootstrap.Modal.getInstance(document.getElementById('updateModal')).hide();
+                document.getElementById('updateSuccessMessage').classList.add('d-none');
+            }, 1500);
+        }, 1000);
+        
     } catch (error) {
         console.error('Update error:', error);
-        alert('Network error. Please try again.');
+        alert('Failed to update. Please try again.');
     }
 }
 
@@ -492,17 +509,18 @@ async function updateAttendanceRecord() {
 async function loadStats() {
     try {
         const today = new Date().toISOString().split('T')[0];
-        const filterFormula = encodeURIComponent(`DATESTR({Date}) = '${today}'`);
-        const url = `${API_URLS.ATTENDANCE}?filterByFormula=${filterFormula}`;
+        const filterFormula = `DATESTR({Date}) = '${today}'`;
         
-        const response = await fetch(url, {
-            headers: API_HEADERS
-        });
+        const data = await callNetlifyFunction(
+            NETLIFY_CONFIG.TABLES.ATTENDANCE,
+            'list',
+            {},
+            null,
+            filterFormula
+        );
         
-        if (response.ok) {
-            const data = await response.json();
-            calculateStats(data.records);
-        }
+        calculateStats(data.records);
+        
     } catch (error) {
         console.error('Error loading stats:', error);
     }
@@ -540,17 +558,18 @@ function calculateStats(records) {
 async function loadEmployeeOverview() {
     try {
         const today = new Date().toISOString().split('T')[0];
-        const filterFormula = encodeURIComponent(`DATESTR({Date}) = '${today}'`);
-        const url = `${API_URLS.ATTENDANCE}?filterByFormula=${filterFormula}`;
+        const filterFormula = `DATESTR({Date}) = '${today}'`;
         
-        const response = await fetch(url, {
-            headers: API_HEADERS
-        });
+        const data = await callNetlifyFunction(
+            NETLIFY_CONFIG.TABLES.ATTENDANCE,
+            'list',
+            {},
+            null,
+            filterFormula
+        );
         
-        if (response.ok) {
-            const data = await response.json();
-            displayEmployeeOverview(data.records);
-        }
+        displayEmployeeOverview(data.records);
+        
     } catch (error) {
         console.error('Error loading employee overview:', error);
     }
@@ -652,7 +671,7 @@ function getAttendanceIcon(status) {
 // Handle API errors
 function handleApiError(response) {
     if (response.status === 401) {
-        showError('Unauthorized: Please check your API key');
+        showError('Unauthorized: Please check your configuration');
     } else if (response.status === 403) {
         showError('Forbidden: You don\'t have permission to access this resource');
     } else if (response.status === 404) {
