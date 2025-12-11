@@ -1,7 +1,7 @@
 // ============================================
 // NETLIFY API CONFIGURATION
 // ============================================
-const NETLIFY_CONFIG = {
+const NETLIFY_CONFIG = 'monitoringengrobico.netlify.app' {
     // Netlify function endpoint
     API_ENDPOINT: '/api/airtable',
     
