@@ -2,150 +2,136 @@
 // AIRTABLE CONFIGURATION
 // ============================================
 const AIRTABLE_CONFIG = {
-    // Replace with your actual Airtable credentials
-    API_KEY: 'pat9ecL1akCTHawn0', // From Airtable Account > Generate API Key
-    BASE_ID: 'app9mHFvaq9FDA4Up', // Your Base ID from Airtable URL
+    // Your API Key (from https://airtable.com/account)
+    API_KEY: 'pat9ecL1akCTHawn0',
     
-    // Table IDs from your Airtable
+    // Your Base ID (from Airtable URL)
+    BASE_ID: 'app9mHFvaq9FDA4Up',
+    
+    // Your Table IDs (from your tables)
     TABLES: {
-        ATTENDANCE: 'tblP5q2DtT7SlhBVI', // Attendance Monitoring table
-        EMPLOYEES: 'tbJ3ew4URTGRzdHT', // Staff Members / Master List table
-        LOCATIONS: 'tblZAfFjASubUgBSc' // Locations table (replace with actual)
-    } 
+        ATTENDANCE: 'tblP5q2DtT7SlhBVI',    // Attendance Monitoring
+        LOCATIONS: 'tblZAfFjASubUgBSc',     // Location table
+        EMPLOYEES: 'tbJ3ew4URTGRzdHT'       // Master List
+    }
 };
 
 // API URLs
 const API_URLS = {
     ATTENDANCE: `https://api.airtable.com/v0/${AIRTABLE_CONFIG.BASE_ID}/${AIRTABLE_CONFIG.TABLES.ATTENDANCE}`,
-    EMPLOYEES: `https://api.airtable.com/v0/${AIRTABLE_CONFIG.BASE_ID}/${AIRTABLE_CONFIG.TABLES.EMPLOYEES}`,
-    LOCATIONS: `https://api.airtable.com/v0/${AIRTABLE_CONFIG.BASE_ID}/${AIRTABLE_CONFIG.TABLES.LOCATIONS}`
+    LOCATIONS: `https://api.airtable.com/v0/${AIRTABLE_CONFIG.BASE_ID}/${AIRTABLE_CONFIG.TABLES.LOCATIONS}`,
+    EMPLOYEES: `https://api.airtable.com/v0/${AIRTABLE_CONFIG.BASE_ID}/${AIRTABLE_CONFIG.TABLES.EMPLOYEES}`
 };
 
-// Common headers for Airtable API
+// Common headers for API requests
 const API_HEADERS = {
     'Authorization': `Bearer ${AIRTABLE_CONFIG.API_KEY}`,
     'Content-Type': 'application/json'
 };
 
 // ============================================
+// GLOBAL VARIABLES
+// ============================================
+let allEmployees = [];
+let allLocations = [];
+let currentDate = new Date().toISOString().split('T')[0];
+
+// ============================================
 // INITIALIZATION
 // ============================================
 document.addEventListener('DOMContentLoaded', function() {
-    // Set today's date as default
-    const today = new Date().toISOString().split('T')[0];
-    document.getElementById('date').value = today;
+    // Set today's date
+    document.getElementById('date').value = currentDate;
+    
+    // Initialize date/time display
+    updateDateTime();
+    setInterval(updateDateTime, 1000);
     
     // Load all data
     initializeData();
     
     // Setup form submission
-    setupFormSubmission();
+    setupForm();
+    
+    // Auto-refresh data every 30 seconds
+    setInterval(loadAllData, 30000);
 });
+
+// Update current date/time display
+function updateDateTime() {
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('en-US', { 
+        weekday: 'long', 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+    });
+    const timeStr = now.toLocaleTimeString('en-US', { 
+        hour: '2-digit', 
+        minute: '2-digit', 
+        second: '2-digit' 
+    });
+    
+    document.getElementById('currentDateTime').innerHTML = 
+        `<i class="bi bi-clock"></i> ${dateStr} | ${timeStr}`;
+}
 
 // ============================================
 // DATA INITIALIZATION
 // ============================================
 async function initializeData() {
     try {
-        // Load data in parallel
+        // Load employees and locations first (for dropdowns)
         await Promise.all([
-            loadEmployeeDropdown(),
-            loadLocationDropdown(),
-            loadTodayEntries(),
-            loadEmployeeList(),
-            loadLocationList()
+            loadEmployees(),
+            loadLocations()
         ]);
         
-        console.log('All data loaded successfully');
+        // Then load today's data
+        await loadAllData();
+        
+        console.log('System initialized successfully');
+    } catch (error) {
+        console.error('Initialization error:', error);
+        showError('Failed to initialize system. Please refresh the page.');
+    }
+}
+
+async function loadAllData() {
+    try {
+        await Promise.all([
+            loadTodayEntries(),
+            loadStats(),
+            loadEmployeeOverview()
+        ]);
     } catch (error) {
         console.error('Error loading data:', error);
-        alert('Error loading data. Please refresh the page.');
+    }
+}
+
+function refreshData() {
+    showLoading();
+    loadAllData();
+}
+
+function showLoading() {
+    const entriesTable = document.getElementById('todayEntries');
+    if (entriesTable) {
+        entriesTable.innerHTML = `
+            <tr>
+                <td colspan="7" class="text-center">
+                    <div class="loading-spinner" style="width: 30px; height: 30px; margin: 0 auto;"></div>
+                    <p class="mt-2">Refreshing data...</p>
+                </td>
+            </tr>
+        `;
     }
 }
 
 // ============================================
-// FORM HANDLING
+// EMPLOYEES MANAGEMENT
 // ============================================
-function setupFormSubmission() {
-    const form = document.getElementById('monitoringForm');
-    
-    form.addEventListener('submit', async function(e) {
-        e.preventDefault();
-        
-        // Get form data
-        const formData = {
-            "Date": document.getElementById('date').value,
-            "Shift": document.getElementById('shift').value,
-            "Employee Name": document.getElementById('employeeName').value,
-            "Position": document.getElementById('position').value,
-            "Attendance": document.getElementById('attendance').value,
-            "Location": document.getElementById('location').value
-        };
-        
-        // Validate form
-        if (!validateForm(formData)) {
-            return;
-        }
-        
-        // Submit to Airtable
-        try {
-            await submitToAirtable(formData);
-            
-            // Show success message
-            showSuccessMessage();
-            
-            // Reset form (but keep today's date)
-            form.reset();
-            document.getElementById('date').value = new Date().toISOString().split('T')[0];
-            
-            // Reload today's entries
-            await loadTodayEntries();
-            
-        } catch (error) {
-            console.error('Submission error:', error);
-            alert('Error submitting form. Please try again.');
-        }
-    });
-}
-
-function validateForm(data) {
-    for (const key in data) {
-        if (!data[key]) {
-            alert(`Please fill in ${key}`);
-            return false;
-        }
-    }
-    return true;
-}
-
-async function submitToAirtable(data) {
-    const response = await fetch(API_URLS.ATTENDANCE, {
-        method: 'POST',
-        headers: API_HEADERS,
-        body: JSON.stringify({ fields: data })
-    });
-    
-    if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    
-    return await response.json();
-}
-
-function showSuccessMessage() {
-    const message = document.getElementById('successMessage');
-    message.style.display = 'block';
-    
-    // Hide after 3 seconds
-    setTimeout(() => {
-        message.style.display = 'none';
-    }, 3000);
-}
-
-// ============================================
-// DROPDOWN LOADING
-// ============================================
-async function loadEmployeeDropdown() {
+async function loadEmployees() {
     try {
         const response = await fetch(`${API_URLS.EMPLOYEES}?view=Grid%20view`, {
             headers: API_HEADERS
@@ -153,66 +139,226 @@ async function loadEmployeeDropdown() {
         
         if (response.ok) {
             const data = await response.json();
-            const select = document.getElementById('employeeName');
+            allEmployees = data.records.map(record => ({
+                id: record.id,
+                name: record.fields['Employee Name'] || '',
+                position: record.fields['Position'] || '',
+                status: record.fields['Status'] || 'Active',
+                location: record.fields['Location'] || '',
+                supervisor: record.fields['Supervisor'] || ''
+            }));
             
-            // Clear existing options (except first)
-            select.innerHTML = '<option value="">Select Employee</option>';
+            // Populate employee dropdown
+            populateEmployeeDropdown();
             
-            // Add employee options
-            data.records.forEach(record => {
-                const employeeName = record.fields['Employee Name'];
-                if (employeeName) {
-                    const option = document.createElement('option');
-                    option.value = employeeName;
-                    option.textContent = employeeName;
-                    select.appendChild(option);
-                }
-            });
+            // Update total staff count
+            document.getElementById('totalStaff').textContent = allEmployees.length;
         }
     } catch (error) {
         console.error('Error loading employees:', error);
     }
 }
 
-async function loadLocationDropdown() {
+function populateEmployeeDropdown() {
+    const dropdown = document.getElementById('employeeName');
+    dropdown.innerHTML = '<option value="">Select Employee</option>';
+    
+    // Filter only active employees
+    const activeEmployees = allEmployees.filter(emp => emp.status === 'Active');
+    
+    activeEmployees.forEach(employee => {
+        const option = document.createElement('option');
+        option.value = employee.name;
+        option.textContent = `${employee.name} (${employee.position})`;
+        option.dataset.position = employee.position;
+        dropdown.appendChild(option);
+    });
+    
+    // Auto-fill position when employee is selected
+    dropdown.addEventListener('change', function() {
+        const selectedOption = this.options[this.selectedIndex];
+        if (selectedOption.dataset.position) {
+            document.getElementById('position').value = selectedOption.dataset.position;
+        }
+    });
+}
+
+// ============================================
+// LOCATIONS MANAGEMENT
+// ============================================
+async function loadLocations() {
     try {
-        const response = await fetch(API_URLS.LOCATIONS, {
+        const response = await fetch(`${API_URLS.LOCATIONS}`, {
             headers: API_HEADERS
         });
         
         if (response.ok) {
             const data = await response.json();
-            const select = document.getElementById('location');
+            allLocations = data.records.map(record => ({
+                id: record.id,
+                code: record.fields['Code'] || '',
+                name: record.fields['Location'] || '',
+                supervisor: record.fields['Supervisor'] || ''
+            }));
             
-            // Clear existing options (except first)
-            select.innerHTML = '<option value="">Select Location</option>';
+            // Populate location dropdowns
+            populateLocationDropdown('location');
+            populateLocationDropdown('updateLocation');
             
-            // Add location options
-            data.records.forEach(record => {
-                const location = record.fields['Location'] || record.fields['Code'];
-                if (location) {
-                    const option = document.createElement('option');
-                    option.value = location;
-                    option.textContent = location;
-                    select.appendChild(option);
-                }
-            });
+            // Display locations list
+            displayLocationsList();
+            
+            // Update active locations count
+            document.getElementById('activeLocations').textContent = allLocations.length;
         }
     } catch (error) {
         console.error('Error loading locations:', error);
     }
 }
 
+function populateLocationDropdown(dropdownId) {
+    const dropdown = document.getElementById(dropdownId);
+    dropdown.innerHTML = '<option value="">Select Location</option>';
+    
+    allLocations.forEach(location => {
+        const option = document.createElement('option');
+        option.value = location.code;
+        option.textContent = `${location.code} - ${location.name}`;
+        dropdown.appendChild(option);
+    });
+}
+
+function displayLocationsList() {
+    const container = document.getElementById('locationsList');
+    
+    let html = '<div class="row">';
+    allLocations.forEach(location => {
+        html += `
+            <div class="col-md-6 mb-2">
+                <div class="location-badge">
+                    <strong>${location.code}</strong><br>
+                    <small>${location.name}</small>
+                </div>
+            </div>
+        `;
+    });
+    html += '</div>';
+    
+    container.innerHTML = html;
+}
+
 // ============================================
-// TODAY'S ENTRIES DISPLAY
+// FORM SUBMISSION
+// ============================================
+function setupForm() {
+    const form = document.getElementById('monitoringForm');
+    
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        // Disable submit button to prevent double submission
+        const submitBtn = document.getElementById('submitBtn');
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Submitting...';
+        
+        // Hide previous messages
+        hideMessages();
+        
+        // Validate form
+        if (!validateForm()) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<i class="bi bi-send-check"></i> Submit Entry';
+            return;
+        }
+        
+        // Prepare data
+        const formData = {
+            "Date": document.getElementById('date').value,
+            "Shift": document.getElementById('shift').value,
+            "Employee Name": document.getElementById('employeeName').value,
+            "Position": document.getElementById('position').value,
+            "Attendance": document.getElementById('attendance').value,
+            "Location": document.getElementById('location').value,
+            "Timestamp": new Date().toISOString()
+        };
+        
+        try {
+            // Submit to Airtable
+            const response = await fetch(API_URLS.ATTENDANCE, {
+                method: 'POST',
+                headers: API_HEADERS,
+                body: JSON.stringify({ fields: formData })
+            });
+            
+            if (response.ok) {
+                // Show success message
+                document.getElementById('successMessage').classList.remove('d-none');
+                
+                // Reset form
+                form.reset();
+                document.getElementById('date').value = currentDate;
+                document.getElementById('position').value = '';
+                
+                // Reload today's entries
+                await loadAllData();
+                
+                // Hide success message after 3 seconds
+                setTimeout(() => {
+                    document.getElementById('successMessage').classList.add('d-none');
+                }, 3000);
+            } else {
+                const errorData = await response.json();
+                showError(`Submission failed: ${errorData.error?.message || 'Unknown error'}`);
+            }
+        } catch (error) {
+            console.error('Submission error:', error);
+            showError('Network error. Please check your connection.');
+        } finally {
+            // Re-enable submit button
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<i class="bi bi-send-check"></i> Submit Entry';
+        }
+    });
+}
+
+function validateForm() {
+    const requiredFields = ['date', 'shift', 'employeeName', 'attendance', 'location'];
+    
+    for (const fieldId of requiredFields) {
+        const field = document.getElementById(fieldId);
+        if (!field.value) {
+            showError(`Please fill in ${fieldId.replace(/([A-Z])/g, ' $1').toLowerCase()}`);
+            field.focus();
+            return false;
+        }
+    }
+    
+    return true;
+}
+
+function hideMessages() {
+    document.getElementById('successMessage').classList.add('d-none');
+    document.getElementById('errorMessage').classList.add('d-none');
+}
+
+function showError(message) {
+    const errorElement = document.getElementById('errorMessage');
+    document.getElementById('errorText').textContent = message;
+    errorElement.classList.remove('d-none');
+    
+    setTimeout(() => {
+        errorElement.classList.add('d-none');
+    }, 5000);
+}
+
+// ============================================
+// TODAY'S ENTRIES
 // ============================================
 async function loadTodayEntries() {
     try {
         const today = new Date().toISOString().split('T')[0];
-        
-        // Filter formula for today's entries
         const filterFormula = encodeURIComponent(`DATESTR({Date}) = '${today}'`);
-        const url = `${API_URLS.ATTENDANCE}?filterByFormula=${filterFormula}&sort[0][field]=Shift&sort[0][direction]=asc`;
+        const url = `${API_URLS.ATTENDANCE}?filterByFormula=${filterFormula}&sort[0][field]=Timestamp&sort[0][direction]=desc`;
         
         const response = await fetch(url, {
             headers: API_HEADERS
@@ -224,8 +370,13 @@ async function loadTodayEntries() {
         }
     } catch (error) {
         console.error('Error loading today entries:', error);
-        document.getElementById('todayEntries').innerHTML = 
-            '<p class="text-danger">Error loading entries</p>';
+        document.getElementById('todayEntries').innerHTML = `
+            <tr>
+                <td colspan="7" class="text-center text-danger">
+                    <i class="bi bi-exclamation-triangle"></i> Error loading entries
+                </td>
+            </tr>
+        `;
     }
 }
 
@@ -233,146 +384,230 @@ function displayTodayEntries(records) {
     const container = document.getElementById('todayEntries');
     
     if (!records || records.length === 0) {
-        container.innerHTML = '<p>No entries for today yet.</p>';
+        container.innerHTML = `
+            <tr>
+                <td colspan="7" class="text-center text-muted">
+                    <i class="bi bi-inbox"></i> No attendance records for today
+                </td>
+            </tr>
+        `;
         return;
     }
     
-    let html = `
-        <div class="section-title">
-            <h4>📋 Today's Attendance (${records.length} entries)</h4>
-        </div>
-        <table class="table">
-            <thead>
-                <tr>
-                    <th>Time</th>
-                    <th>Employee</th>
-                    <th>Position</th>
-                    <th>Shift</th>
-                    <th>Status</th>
-                    <th>Location</th>
-                </tr>
-            </thead>
-            <tbody>
-    `;
+    let html = '';
     
     records.forEach(record => {
         const fields = record.fields;
+        const time = fields.Timestamp ? formatTime(fields.Timestamp) : '';
+        
         html += `
             <tr>
-                <td>${formatTime(fields.Date)}</td>
-                <td>${fields['Employee Name'] || ''}</td>
+                <td>${time}</td>
+                <td><strong>${fields['Employee Name'] || ''}</strong></td>
                 <td>${fields.Position || ''}</td>
-                <td>${fields.Shift || ''}</td>
-                <td><span class="badge badge-${getAttendanceClass(fields.Attendance)}">${fields.Attendance || ''}</span></td>
-                <td>${fields.Location || ''}</td>
+                <td><span class="badge bg-info">${fields.Shift || ''}</span></td>
+                <td>
+                    <span class="badge bg-${getAttendanceColor(fields.Attendance)}">
+                        ${getAttendanceIcon(fields.Attendance)} ${fields.Attendance || ''}
+                    </span>
+                </td>
+                <td><span class="badge bg-secondary">${fields.Location || ''}</span></td>
+                <td>
+                    <button class="btn btn-sm btn-outline-primary" onclick="openUpdateModal('${record.id}', '${fields['Employee Name']}', '${fields.Attendance}', '${fields.Location}')">
+                        <i class="bi bi-pencil"></i> Edit
+                    </button>
+                </td>
             </tr>
         `;
     });
-    
-    html += `
-            </tbody>
-        </table>
-    `;
     
     container.innerHTML = html;
 }
 
 // ============================================
-// EMPLOYEE LIST DISPLAY
+// UPDATE ATTENDANCE (COLUMN TYPE UPDATE)
 // ============================================
-async function loadEmployeeList() {
+function openUpdateModal(recordId, employeeName, attendance, location) {
+    document.getElementById('updateRecordId').value = recordId;
+    document.getElementById('updateEmployee').value = employeeName;
+    document.getElementById('updateAttendance').value = attendance;
+    document.getElementById('updateLocation').value = location;
+    
+    const modal = new bootstrap.Modal(document.getElementById('updateModal'));
+    modal.show();
+}
+
+async function updateAttendanceRecord() {
+    const recordId = document.getElementById('updateRecordId').value;
+    const newAttendance = document.getElementById('updateAttendance').value;
+    const newLocation = document.getElementById('updateLocation').value;
+    
+    if (!newAttendance || !newLocation) {
+        alert('Please fill all fields');
+        return;
+    }
+    
+    const updateData = {
+        fields: {
+            "Attendance": newAttendance,
+            "Location": newLocation,
+            "Last Updated": new Date().toISOString()
+        }
+    };
+    
     try {
-        const response = await fetch(`${API_URLS.EMPLOYEES}?view=Grid%20view`, {
+        const response = await fetch(`${API_URLS.ATTENDANCE}/${recordId}`, {
+            method: 'PATCH',
+            headers: API_HEADERS,
+            body: JSON.stringify(updateData)
+        });
+        
+        if (response.ok) {
+            // Show success message
+            document.getElementById('updateSuccessMessage').classList.remove('d-none');
+            
+            // Reload today's entries
+            setTimeout(async () => {
+                await loadAllData();
+                
+                // Hide modal after 1.5 seconds
+                setTimeout(() => {
+                    bootstrap.Modal.getInstance(document.getElementById('updateModal')).hide();
+                    document.getElementById('updateSuccessMessage').classList.add('d-none');
+                }, 1500);
+            }, 1000);
+        } else {
+            const errorData = await response.json();
+            alert(`Update failed: ${errorData.error?.message || 'Unknown error'}`);
+        }
+    } catch (error) {
+        console.error('Update error:', error);
+        alert('Network error. Please try again.');
+    }
+}
+
+// ============================================
+// STATISTICS
+// ============================================
+async function loadStats() {
+    try {
+        const today = new Date().toISOString().split('T')[0];
+        const filterFormula = encodeURIComponent(`DATESTR({Date}) = '${today}'`);
+        const url = `${API_URLS.ATTENDANCE}?filterByFormula=${filterFormula}`;
+        
+        const response = await fetch(url, {
             headers: API_HEADERS
         });
         
         if (response.ok) {
             const data = await response.json();
-            displayEmployeeList(data.records);
+            calculateStats(data.records);
         }
     } catch (error) {
-        console.error('Error loading employee list:', error);
+        console.error('Error loading stats:', error);
     }
 }
 
-function displayEmployeeList(records) {
-    const container = document.getElementById('employeeList');
-    
-    let html = `
-        <div class="section-title">
-            <h4>👥 Staff Members (${records.length})</h4>
-        </div>
-        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px;">
-    `;
+function calculateStats(records) {
+    let presentCount = 0;
+    let absentCount = 0;
+    let uniqueLocations = new Set();
     
     records.forEach(record => {
-        const fields = record.fields;
-        html += `
-            <div style="background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
-                <h6 style="margin: 0 0 5px 0;">${fields['Employee Name'] || 'Unnamed'}</h6>
-                <p style="color: #666; margin: 0; font-size: 14px;">
-                    Position: ${fields.Position || 'Not specified'}<br>
-                    ID: ${record.id.substring(0, 8)}...
-                </p>
+        const attendance = record.fields.Attendance;
+        const location = record.fields.Location;
+        
+        if (attendance === 'Present') {
+            presentCount++;
+        } else if (attendance === 'Absent') {
+            absentCount++;
+        }
+        
+        if (location) {
+            uniqueLocations.add(location);
+        }
+    });
+    
+    // Update stats display
+    document.getElementById('totalPresent').textContent = presentCount;
+    document.getElementById('totalAbsent').textContent = absentCount;
+    document.getElementById('activeLocations').textContent = uniqueLocations.size;
+}
+
+// ============================================
+// EMPLOYEE OVERVIEW
+// ============================================
+async function loadEmployeeOverview() {
+    try {
+        const today = new Date().toISOString().split('T')[0];
+        const filterFormula = encodeURIComponent(`DATESTR({Date}) = '${today}'`);
+        const url = `${API_URLS.ATTENDANCE}?filterByFormula=${filterFormula}`;
+        
+        const response = await fetch(url, {
+            headers: API_HEADERS
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            displayEmployeeOverview(data.records);
+        }
+    } catch (error) {
+        console.error('Error loading employee overview:', error);
+    }
+}
+
+function displayEmployeeOverview(records) {
+    const container = document.getElementById('employeeOverview');
+    
+    if (!records || records.length === 0) {
+        container.innerHTML = `
+            <div class="col-md-12 text-center text-muted">
+                <i class="bi bi-person-slash"></i> No attendance records for today
             </div>
         `;
+        return;
+    }
+    
+    // Group by attendance status
+    const groupedByStatus = {};
+    records.forEach(record => {
+        const status = record.fields.Attendance || 'Unknown';
+        if (!groupedByStatus[status]) {
+            groupedByStatus[status] = [];
+        }
+        groupedByStatus[status].push(record);
     });
     
-    html += '</div>';
-    container.innerHTML = html;
-}
-
-// ============================================
-// LOCATION LIST DISPLAY
-// ============================================
-async function loadLocationList() {
-    try {
-        const response = await fetch(API_URLS.LOCATIONS, {
-            headers: API_HEADERS
+    let html = '';
+    for (const [status, employees] of Object.entries(groupedByStatus)) {
+        html += `
+            <div class="col-md-4 mb-3">
+                <div class="employee-card">
+                    <h6 class="mb-2">
+                        <span class="badge bg-${getAttendanceColor(status)} me-2">
+                            ${getAttendanceIcon(status)}
+                        </span>
+                        ${status}
+                        <span class="badge bg-dark float-end">${employees.length}</span>
+                    </h6>
+                    <div class="employee-list" style="max-height: 150px; overflow-y: auto;">
+        `;
+        
+        employees.forEach(record => {
+            html += `
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span>${record.fields['Employee Name'] || 'Unknown'}</span>
+                    <small class="badge bg-secondary">${record.fields.Location || ''}</small>
+                </div>
+            `;
         });
         
-        if (response.ok) {
-            const data = await response.json();
-            displayLocationList(data.records);
-        }
-    } catch (error) {
-        console.error('Error loading location list:', error);
-    }
-}
-
-function displayLocationList(records) {
-    const container = document.getElementById('locationList');
-    
-    let html = `
-        <div class="section-title">
-            <h4>🗺️ Locations</h4>
-        </div>
-        <table class="table">
-            <thead>
-                <tr>
-                    <th>Code</th>
-                    <th>Location Name</th>
-                    <th>Supervisor</th>
-                </tr>
-            </thead>
-            <tbody>
-    `;
-    
-    records.forEach(record => {
-        const fields = record.fields;
         html += `
-            <tr>
-                <td><strong>${fields.Code || ''}</strong></td>
-                <td>${fields.Location || ''}</td>
-                <td>${fields['A Supervisor'] || fields.Supervisor || ''}</td>
-            </tr>
+                    </div>
+                </div>
+            </div>
         `;
-    });
-    
-    html += `
-            </tbody>
-        </table>
-    `;
+    }
     
     container.innerHTML = html;
 }
@@ -380,25 +615,58 @@ function displayLocationList(records) {
 // ============================================
 // HELPER FUNCTIONS
 // ============================================
-function formatTime(dateString) {
-    if (!dateString) return '';
-    const date = new Date(dateString);
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+function formatTime(dateTimeString) {
+    if (!dateTimeString) return '';
+    const date = new Date(dateTimeString);
+    return date.toLocaleTimeString('en-US', { 
+        hour: '2-digit', 
+        minute: '2-digit' 
+    });
 }
 
-function getAttendanceClass(status) {
-    if (!status) return 'secondary';
-    
-    const statusMap = {
-        'Present': 'present',
-        'Absent': 'absent',
-        'On-Leave': 'onleave',
-        'Late': 'late',
-        'Half-Day': 'warning'
+function getAttendanceColor(status) {
+    const colors = {
+        'Present': 'success',
+        'Absent': 'danger',
+        'On-Leave': 'warning',
+        'Late': 'info',
+        'Half-Day': 'primary'
     };
-    
-    return statusMap[status] || 'secondary';
+    return colors[status] || 'secondary';
 }
 
-// Auto-update every 30 seconds
-setInterval(loadTodayEntries, 30000);
+function getAttendanceIcon(status) {
+    const icons = {
+        'Present': '✅',
+        'Absent': '❌',
+        'On-Leave': '🌴',
+        'Late': '⏰',
+        'Half-Day': '🕐'
+    };
+    return icons[status] || '';
+}
+
+// ============================================
+// ERROR HANDLING
+// ============================================
+// Handle API errors
+function handleApiError(response) {
+    if (response.status === 401) {
+        showError('Unauthorized: Please check your API key');
+    } else if (response.status === 403) {
+        showError('Forbidden: You don\'t have permission to access this resource');
+    } else if (response.status === 404) {
+        showError('Not Found: The requested resource was not found');
+    } else if (response.status === 429) {
+        showError('Too Many Requests: Please wait before trying again');
+    } else {
+        showError(`API Error: ${response.status}`);
+    }
+}
+
+// Global error handler
+window.onerror = function(message, source, lineno, colno, error) {
+    console.error('Global error:', error);
+    showError('An unexpected error occurred. Please refresh the page.');
+    return true;
+};
