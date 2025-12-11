@@ -2,6 +2,9 @@
   "name": "attendance-monitoring-system",
   "version": "1.0.0",
   "description": "Attendance Monitoring System with Netlify Functions",
+  "scripts": {
+    "build": "echo 'Build complete'"
+  },
   "dependencies": {
     "node-fetch": "^2.6.7"
   },
