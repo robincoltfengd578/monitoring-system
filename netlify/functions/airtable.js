@@ -2,6 +2,8 @@
 const fetch = require('node-fetch');
 
 exports.handler = async function(event, context) {
+    console.log('Function called with event:', JSON.stringify(event, null, 2));
+    
     // CORS headers
     const headers = {
         'Access-Control-Allow-Origin': '*',
@@ -28,8 +30,14 @@ exports.handler = async function(event, context) {
             AIRTABLE_TABLE_EMPLOYEES
         } = process.env;
 
+        console.log('Env vars loaded:', { 
+            hasKey: !!AIRTABLE_API_KEY,
+            hasBaseId: !!AIRTABLE_BASE_ID
+        });
+
         // Check if environment variables are set
         if (!AIRTABLE_API_KEY || !AIRTABLE_BASE_ID) {
+            console.error('Missing environment variables');
             return {
                 statusCode: 500,
                 headers,
@@ -42,17 +50,19 @@ exports.handler = async function(event, context) {
 
         // Parse query parameters
         const params = event.queryStringParameters || {};
-        const { table, action = 'list', recordId, filter } = params;
+        console.log('Query params:', params);
         
-        // Log for debugging
-        console.log('Function called with:', { table, action, recordId, filter });
+        const { table, action = 'list', recordId, filter } = params;
 
         // Validate required parameters
         if (!table) {
             return {
                 statusCode: 400,
                 headers,
-                body: JSON.stringify({ error: 'Table parameter is required' })
+                body: JSON.stringify({ 
+                    error: 'Table parameter is required',
+                    validTables: ['attendance', 'locations', 'employees']
+                })
             };
         }
 
@@ -68,28 +78,38 @@ exports.handler = async function(event, context) {
             return {
                 statusCode: 400,
                 headers,
-                body: JSON.stringify({ error: `Invalid table: ${table}. Valid tables are: ${Object.keys(TABLE_MAP).join(', ')}` })
+                body: JSON.stringify({ 
+                    error: `Invalid table: ${table}`,
+                    validTables: Object.keys(TABLE_MAP)
+                })
             };
         }
 
-        // Construct Airtable URL
+        // Get table ID
         const tableId = TABLE_MAP[table];
+        
+        // Construct base Airtable URL
         let airtableUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${tableId}`;
         
-        // Prepare query parameters
+        // Add record ID for update operations
+        if (recordId && (action === 'update' || action === 'patch')) {
+            airtableUrl = `${airtableUrl}/${recordId}`;
+        }
+        
+        // Build query parameters
         let queryParams = [];
         
-        if (filter) {
+        if (filter && action === 'list') {
             queryParams.push(`filterByFormula=${encodeURIComponent(filter)}`);
         }
         
-        // Add sorting for list views
-        if (table === 'attendance') {
+        // Add sorting for attendance table
+        if (table === 'attendance' && action === 'list') {
             queryParams.push('sort%5B0%5D%5Bfield%5D=Timestamp&sort%5B0%5D%5Bdirection%5D=desc');
         }
         
         // For employees view
-        if (table === 'employees' && !filter) {
+        if (table === 'employees' && action === 'list' && !filter) {
             queryParams.push('view=Grid%20view');
         }
         
@@ -97,28 +117,25 @@ exports.handler = async function(event, context) {
             airtableUrl += `?${queryParams.join('&')}`;
         }
 
-        // For update operations
-        if (recordId && (action === 'update' || action === 'patch')) {
-            airtableUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${tableId}/${recordId}`;
-        }
+        console.log('Final Airtable URL:', airtableUrl);
 
-        console.log('Airtable URL:', airtableUrl);
-
-        // Prepare request body and method
-        let requestBody = null;
+        // Determine HTTP method
         let method = 'GET';
+        let requestBody = null;
         
         if (action === 'create') {
             method = 'POST';
-            if (event.body) {
-                const body = JSON.parse(event.body);
-                requestBody = JSON.stringify({ fields: body.fields });
-            }
         } else if (action === 'update' || action === 'patch') {
             method = 'PATCH';
-            if (event.body) {
+        }
+        
+        // Parse request body if exists
+        if (event.body && (action === 'create' || action === 'update' || action === 'patch')) {
+            try {
                 const body = JSON.parse(event.body);
                 requestBody = JSON.stringify({ fields: body.fields });
+            } catch (e) {
+                console.error('Error parsing request body:', e);
             }
         }
 
@@ -138,18 +155,22 @@ exports.handler = async function(event, context) {
             options.body = requestBody;
         }
 
-        console.log('Making request to Airtable with options:', { url: airtableUrl, method, hasBody: !!requestBody });
+        console.log('Making Airtable request with options:', {
+            method: options.method,
+            hasBody: !!options.body,
+            url: airtableUrl
+        });
         
         const response = await fetch(airtableUrl, options);
-        const responseData = await response.json();
-
+        const data = await response.json();
+        
         console.log('Airtable response status:', response.status);
-
-        // Return response
+        
+        // Return the response
         return {
             statusCode: response.status,
             headers,
-            body: JSON.stringify(responseData)
+            body: JSON.stringify(data)
         };
 
     } catch (error) {
@@ -159,7 +180,8 @@ exports.handler = async function(event, context) {
             headers,
             body: JSON.stringify({ 
                 error: 'Internal server error',
-                message: error.message
+                message: error.message,
+                details: process.env.NODE_ENV === 'development' ? error.stack : undefined
             })
         };
     }
