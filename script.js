@@ -1,11 +1,11 @@
 // ============================================
-// NETLIFY API CONFIGURATION
+// CONFIGURATION
 // ============================================
-const NETLIFY_CONFIG = {
-    // Netlify function endpoint - updated with your URL
-    API_ENDPOINT: 'https://monitoringengrobico.netlify.app/.netlify/functions/airtable',
-    
-    // Tables mapping
+const API_CONFIG = {
+    BASE_URL: 'https://monitoringengrobico.netlify.app',
+    ENDPOINTS: {
+        AIRTABLE: '/.netlify/functions/airtable'
+    },
     TABLES: {
         ATTENDANCE: 'attendance',
         LOCATIONS: 'locations',
@@ -13,10 +13,12 @@ const NETLIFY_CONFIG = {
     }
 };
 
-// Helper function to call Netlify function
-async function callNetlifyFunction(table, action = 'list', data = {}, recordId = null, filter = null) {
+// ============================================
+// API HELPER
+// ============================================
+async function callAPI(table, action = 'list', data = {}, recordId = null, filter = null) {
     try {
-        let url = `${NETLIFY_CONFIG.API_ENDPOINT}?table=${table}&action=${action}`;
+        let url = `${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.AIRTABLE}?table=${table}&action=${action}`;
         
         if (recordId) {
             url += `&recordId=${encodeURIComponent(recordId)}`;
@@ -26,8 +28,10 @@ async function callNetlifyFunction(table, action = 'list', data = {}, recordId =
             url += `&filter=${encodeURIComponent(filter)}`;
         }
         
+        console.log('API Call:', { url, table, action, recordId, filter });
+        
         const options = {
-            method: action === 'list' ? 'GET' : action === 'create' ? 'POST' : 'PATCH',
+            method: action === 'list' ? 'GET' : 'POST',
             headers: {
                 'Content-Type': 'application/json'
             }
@@ -37,18 +41,15 @@ async function callNetlifyFunction(table, action = 'list', data = {}, recordId =
             options.body = JSON.stringify(data);
         }
         
-        console.log('Calling Netlify function:', url);
         const response = await fetch(url, options);
         
         if (!response.ok) {
-            const errorText = await response.text();
-            console.error('API response error:', response.status, errorText);
-            throw new Error(`API call failed: ${response.status}`);
+            throw new Error(`API error: ${response.status}`);
         }
         
         return await response.json();
     } catch (error) {
-        console.error('Netlify function error:', error);
+        console.error('API call failed:', error);
         throw error;
     }
 }
@@ -76,9 +77,6 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Setup form submission
     setupForm();
-    
-    // Auto-refresh data every 30 seconds
-    setInterval(loadAllData, 30000);
 });
 
 // Update current date/time display
@@ -105,7 +103,9 @@ function updateDateTime() {
 // ============================================
 async function initializeData() {
     try {
-        // Load employees and locations first (for dropdowns)
+        console.log('Starting initialization...');
+        
+        // Load employees and locations first
         await Promise.all([
             loadEmployees(),
             loadLocations()
@@ -157,29 +157,35 @@ function showLoading() {
 // ============================================
 async function loadEmployees() {
     try {
-        const data = await callNetlifyFunction(
-            NETLIFY_CONFIG.TABLES.EMPLOYEES,
-            'list',
-            { view: 'Grid view' }
-        );
+        console.log('Loading employees...');
+        const data = await callAPI(API_CONFIG.TABLES.EMPLOYEES, 'list');
         
-        allEmployees = data.records.map(record => ({
-            id: record.id,
-            name: record.fields['Employee Name'] || '',
-            position: record.fields['Position'] || '',
-            status: record.fields['Status'] || 'Active',
-            location: record.fields['Location'] || '',
-            supervisor: record.fields['Supervisor'] || ''
-        }));
+        console.log('Employees data received:', data);
         
-        // Populate employee dropdown
-        populateEmployeeDropdown();
-        
-        // Update total staff count
-        document.getElementById('totalStaff').textContent = allEmployees.length;
+        if (data.records) {
+            allEmployees = data.records.map(record => ({
+                id: record.id,
+                name: record.fields['Employee Name'] || '',
+                position: record.fields['Position'] || '',
+                status: record.fields['Status'] || 'Active',
+                location: record.fields['Location'] || '',
+                supervisor: record.fields['Supervisor'] || ''
+            }));
+            
+            console.log('Processed employees:', allEmployees.length);
+            
+            // Populate employee dropdown
+            populateEmployeeDropdown();
+            
+            // Update total staff count
+            document.getElementById('totalStaff').textContent = allEmployees.length;
+        } else {
+            console.error('No records in employees data:', data);
+        }
         
     } catch (error) {
         console.error('Error loading employees:', error);
+        showError('Failed to load employee list.');
     }
 }
 
@@ -212,30 +218,35 @@ function populateEmployeeDropdown() {
 // ============================================
 async function loadLocations() {
     try {
-        const data = await callNetlifyFunction(
-            NETLIFY_CONFIG.TABLES.LOCATIONS,
-            'list'
-        );
+        console.log('Loading locations...');
+        const data = await callAPI(API_CONFIG.TABLES.LOCATIONS, 'list');
         
-        allLocations = data.records.map(record => ({
-            id: record.id,
-            code: record.fields['Code'] || '',
-            name: record.fields['Location'] || '',
-            supervisor: record.fields['Supervisor'] || ''
-        }));
+        console.log('Locations data received:', data);
         
-        // Populate location dropdowns
-        populateLocationDropdown('location');
-        populateLocationDropdown('updateLocation');
-        
-        // Display locations list
-        displayLocationsList();
-        
-        // Update active locations count
-        document.getElementById('activeLocations').textContent = allLocations.length;
+        if (data.records) {
+            allLocations = data.records.map(record => ({
+                id: record.id,
+                code: record.fields['Code'] || '',
+                name: record.fields['Location'] || '',
+                supervisor: record.fields['Supervisor'] || ''
+            }));
+            
+            console.log('Processed locations:', allLocations.length);
+            
+            // Populate location dropdowns
+            populateLocationDropdown('location');
+            populateLocationDropdown('updateLocation');
+            
+            // Display locations list
+            displayLocationsList();
+            
+            // Update active locations count
+            document.getElementById('activeLocations').textContent = allLocations.length;
+        }
         
     } catch (error) {
         console.error('Error loading locations:', error);
+        showError('Failed to load location list.');
     }
 }
 
@@ -306,12 +317,16 @@ function setupForm() {
         };
         
         try {
-            // Submit via Netlify function
-            const response = await callNetlifyFunction(
-                NETLIFY_CONFIG.TABLES.ATTENDANCE,
+            console.log('Submitting form data:', formData);
+            
+            // Submit via API
+            const response = await callAPI(
+                API_CONFIG.TABLES.ATTENDANCE,
                 'create',
                 { fields: formData }
             );
+            
+            console.log('Submission successful:', response);
             
             // Show success message
             document.getElementById('successMessage').classList.remove('d-none');
@@ -378,15 +393,23 @@ async function loadTodayEntries() {
         const today = new Date().toISOString().split('T')[0];
         const filterFormula = `DATESTR({Date}) = '${today}'`;
         
-        const data = await callNetlifyFunction(
-            NETLIFY_CONFIG.TABLES.ATTENDANCE,
+        console.log('Loading today entries for:', today);
+        
+        const data = await callAPI(
+            API_CONFIG.TABLES.ATTENDANCE,
             'list',
             {},
             null,
             filterFormula
         );
         
-        displayTodayEntries(data.records);
+        console.log('Today entries data:', data);
+        
+        if (data.records) {
+            displayTodayEntries(data.records);
+        } else {
+            displayTodayEntries([]);
+        }
         
     } catch (error) {
         console.error('Error loading today entries:', error);
@@ -445,7 +468,7 @@ function displayTodayEntries(records) {
 }
 
 // ============================================
-// UPDATE ATTENDANCE (COLUMN TYPE UPDATE)
+// UPDATE ATTENDANCE
 // ============================================
 function openUpdateModal(recordId, employeeName, attendance, location) {
     document.getElementById('updateRecordId').value = recordId;
@@ -476,8 +499,8 @@ async function updateAttendanceRecord() {
     };
     
     try {
-        await callNetlifyFunction(
-            NETLIFY_CONFIG.TABLES.ATTENDANCE,
+        await callAPI(
+            API_CONFIG.TABLES.ATTENDANCE,
             'update',
             { fields: updateData },
             recordId
@@ -511,15 +534,19 @@ async function loadStats() {
         const today = new Date().toISOString().split('T')[0];
         const filterFormula = `DATESTR({Date}) = '${today}'`;
         
-        const data = await callNetlifyFunction(
-            NETLIFY_CONFIG.TABLES.ATTENDANCE,
+        const data = await callAPI(
+            API_CONFIG.TABLES.ATTENDANCE,
             'list',
             {},
             null,
             filterFormula
         );
         
-        calculateStats(data.records);
+        if (data.records) {
+            calculateStats(data.records);
+        } else {
+            calculateStats([]);
+        }
         
     } catch (error) {
         console.error('Error loading stats:', error);
@@ -560,15 +587,19 @@ async function loadEmployeeOverview() {
         const today = new Date().toISOString().split('T')[0];
         const filterFormula = `DATESTR({Date}) = '${today}'`;
         
-        const data = await callNetlifyFunction(
-            NETLIFY_CONFIG.TABLES.ATTENDANCE,
+        const data = await callAPI(
+            API_CONFIG.TABLES.ATTENDANCE,
             'list',
             {},
             null,
             filterFormula
         );
         
-        displayEmployeeOverview(data.records);
+        if (data.records) {
+            displayEmployeeOverview(data.records);
+        } else {
+            displayEmployeeOverview([]);
+        }
         
     } catch (error) {
         console.error('Error loading employee overview:', error);
@@ -664,28 +695,3 @@ function getAttendanceIcon(status) {
     };
     return icons[status] || '';
 }
-
-// ============================================
-// ERROR HANDLING
-// ============================================
-// Handle API errors
-function handleApiError(response) {
-    if (response.status === 401) {
-        showError('Unauthorized: Please check your configuration');
-    } else if (response.status === 403) {
-        showError('Forbidden: You don\'t have permission to access this resource');
-    } else if (response.status === 404) {
-        showError('Not Found: The requested resource was not found');
-    } else if (response.status === 429) {
-        showError('Too Many Requests: Please wait before trying again');
-    } else {
-        showError(`API Error: ${response.status}`);
-    }
-}
-
-// Global error handler
-window.onerror = function(message, source, lineno, colno, error) {
-    console.error('Global error:', error);
-    showError('An unexpected error occurred. Please refresh the page.');
-    return true;
-};
