@@ -13,6 +13,53 @@ const NETLIFY_CONFIG = 'monitoringengrobico.netlify.app' {
     }
 };
 
+// Helper function to call Netlify function
+async function callNetlifyFunction(table, action = 'list', data = {}, recordId = null, filter = null) {
+    try {
+        let url = `${NETLIFY_CONFIG.API_ENDPOINT}?table=${table}&action=${action}`;
+        
+        if (recordId) {
+            url += `&recordId=${encodeURIComponent(recordId)}`;
+        }
+        
+        if (filter) {
+            url += `&filter=${encodeURIComponent(filter)}`;
+        }
+        
+        const options = {
+            method: action === 'list' ? 'GET' : action === 'create' ? 'POST' : 'PATCH',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        };
+        
+        if (action !== 'list') {
+            options.body = JSON.stringify(data);
+        }
+        
+        console.log('Calling Netlify function:', url, options);
+        const response = await fetch(url, options);
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('API response error:', response.status, errorText);
+            throw new Error(`API call failed: ${response.status}`);
+        }
+        
+        return await response.json();
+    } catch (error) {
+        console.error('Netlify function error:', error);
+        throw error;
+    }
+}
+
+// ============================================
+// GLOBAL VARIABLES
+// ============================================
+let allEmployees = [];
+let allLocations = [];
+let currentDate = new Date().toISOString().split('T')[0];
+
 // Common headers for API requests
 const API_HEADERS = {
     'Content-Type': 'application/json'
