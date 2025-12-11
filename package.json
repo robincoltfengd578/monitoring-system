@@ -1,0 +1,11 @@
+{
+  "name": "attendance-monitoring-system",
+  "version": "1.0.0",
+  "description": "Attendance Monitoring System with Netlify Functions",
+  "dependencies": {
+    "node-fetch": "^2.6.7"
+  },
+  "engines": {
+    "node": "18.x"
+  }
+}
