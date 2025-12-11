@@ -3,16 +3,16 @@
 // ============================================
 const AIRTABLE_CONFIG = {
     // Your API Key (from https://airtable.com/account)
-    API_KEY: 'pat9ecL1akCTHawn0',
+    API_KEY: 'patvWcPyRvzdtlnKj.ce09055fcc41ba044607885068d480aa960790656aeaccf55bee9a4a2a523f47',
     
     // Your Base ID (from Airtable URL)
-    BASE_ID: 'app9mHFvaq9FDA4Up',
+    BASE_ID: 'appGZDElUfQHByZrz',
     
     // Your Table IDs (from your tables)
     TABLES: {
-        ATTENDANCE: 'tblP5q2DtT7SlhBVI',    // Attendance Monitoring
-        LOCATIONS: 'tblZAfFjASubUgBSc',     // Location table
-        EMPLOYEES: 'tbJ3ew4URTGRzdHT'       // Master List
+        ATTENDANCE: 'tblwFxtY9Zw8SgAXK',    // Attendance Monitoring
+        LOCATIONS: 'tblPkl7I9IyTjMzDj',     // Location table
+        EMPLOYEES: 'tblZNAV93JJPxB55K'       // Master List
     }
 };
 
