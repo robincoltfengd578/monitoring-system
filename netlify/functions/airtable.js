@@ -44,7 +44,8 @@ exports.handler = async function(event, context) {
         const params = event.queryStringParameters || {};
         const { table, action = 'list', recordId, filter } = params;
         
-        console.log('Function params:', { table, action, recordId, filter });
+        // Log for debugging
+        console.log('Function called with:', { table, action, recordId, filter });
 
         // Validate required parameters
         if (!table) {
@@ -75,40 +76,48 @@ exports.handler = async function(event, context) {
         const tableId = TABLE_MAP[table];
         let airtableUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${tableId}`;
         
-        // Add record ID if provided
-        if (recordId && (action === 'update' || action === 'delete')) {
-            airtableUrl = `${airtableUrl}/${recordId}`;
-        }
-
         // Prepare query parameters
         let queryParams = [];
         
-        if (filter && (action === 'list' || !action)) {
+        if (filter) {
             queryParams.push(`filterByFormula=${encodeURIComponent(filter)}`);
         }
         
-        if (action === 'list') {
+        // Add sorting for list views
+        if (table === 'attendance') {
             queryParams.push('sort%5B0%5D%5Bfield%5D=Timestamp&sort%5B0%5D%5Bdirection%5D=desc');
+        }
+        
+        // For employees view
+        if (table === 'employees' && !filter) {
+            queryParams.push('view=Grid%20view');
         }
         
         if (queryParams.length > 0) {
             airtableUrl += `?${queryParams.join('&')}`;
         }
 
+        // For update operations
+        if (recordId && (action === 'update' || action === 'patch')) {
+            airtableUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${tableId}/${recordId}`;
+        }
+
         console.log('Airtable URL:', airtableUrl);
 
-        // Prepare request body
+        // Prepare request body and method
         let requestBody = null;
         let method = 'GET';
         
-        if (event.body) {
-            const body = JSON.parse(event.body);
-            
-            if (action === 'create') {
-                method = 'POST';
+        if (action === 'create') {
+            method = 'POST';
+            if (event.body) {
+                const body = JSON.parse(event.body);
                 requestBody = JSON.stringify({ fields: body.fields });
-            } else if (action === 'update') {
-                method = 'PATCH';
+            }
+        } else if (action === 'update' || action === 'patch') {
+            method = 'PATCH';
+            if (event.body) {
+                const body = JSON.parse(event.body);
                 requestBody = JSON.stringify({ fields: body.fields });
             }
         }
@@ -129,7 +138,7 @@ exports.handler = async function(event, context) {
             options.body = requestBody;
         }
 
-        console.log('Making request to Airtable with options:', { url: airtableUrl, method });
+        console.log('Making request to Airtable with options:', { url: airtableUrl, method, hasBody: !!requestBody });
         
         const response = await fetch(airtableUrl, options);
         const responseData = await response.json();
@@ -150,8 +159,7 @@ exports.handler = async function(event, context) {
             headers,
             body: JSON.stringify({ 
                 error: 'Internal server error',
-                message: error.message,
-                stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+                message: error.message
             })
         };
     }
