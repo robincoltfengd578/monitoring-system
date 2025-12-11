@@ -454,34 +454,16 @@ title: Machine & Equipment Daily Monitoring
         </div>
     </div>
 
-    <!-- Scripts -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="script.js"></script>
-
-    <!-- Add this RIGHT BEFORE the closing </body> tag, BEFORE your script.js -->
+ <!-- Netlify API Configuration -->
     <script>
-        // Detect if we're on Netlify or GitHub Pages
-        const isNetlify = window.location.hostname.includes('netlify.app');
-        const isLocalhost = window.location.hostname.includes('localhost');
-        
-        // Set base URL for API calls
-        if (isLocalhost) {
-            // For local development
-            window.API_BASE_URL = 'http://localhost:8888';
-        } else if (isNetlify) {
-            // For Netlify deployment
-            window.API_BASE_URL = window.location.origin;
-        } else {
-            // For GitHub Pages or other hosting
-            // REPLACE THIS WITH YOUR ACTUAL NETLIFY SITE URL
-            window.API_BASE_URL = 'https://your-site-name.netlify.app';
-        }
-        
-        console.log('API Base URL:', window.API_BASE_URL);
-        console.log('Hostname:', window.location.hostname);
+        // Override API endpoint for Netlify
+        window.NETLIFY_API_ENDPOINT = 'https://monitoringengrobico.netlify.app/.netlify/functions/airtable';
     </script>
     
+    <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Main Script -->
     <script src="script.js"></script>
     
 </body>
